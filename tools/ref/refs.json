@@ -1,0 +1,36 @@
+{
+ "_doc": "Reference clips in reference/video. feature: how wax differs from liquid (gr = paler, lum = brighter, sat = more saturated). full: whole globe height in frame. speed: playback speed-up (1 = real time).",
+ "commons01": {
+  "file": "commons_Lava_lamp_oT_01_ies.ogv",
+  "feature": "gr",
+  "full": false,
+  "note": "pink wax in red, upper globe cropped"
+ },
+ "commons02": {
+  "file": "commons_Lava_lamp_oT_02_ies.ogv",
+  "feature": "gr",
+  "full": false,
+  "note": "pink wax in red, upper globe cropped"
+ },
+ "zaWki_red": {
+  "file": "zaWkiPb4KQ0.mp4",
+  "feature": "lum",
+  "full": false,
+  "note": "red wax in dark liquid"
+ },
+ "Q7g_tl": {
+  "file": "Q_7gE0uSs3U.mp4",
+  "feature": "lum",
+  "full": true,
+  "start": 130,
+  "speed": 10,
+  "note": "time-lapse, steady part"
+ },
+ "_vQ_pink": {
+  "file": "vQPoICVkCeQ.mp4",
+  "feature": "sat",
+  "invert": true,
+  "full": true,
+  "note": "white wax in pink, whole globe (excluded: wax/liquid too similar to segment)"
+ }
+}

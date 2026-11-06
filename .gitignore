@@ -1,0 +1,8 @@
+.DS_Store
+runs/
+# third-party footage and photos stay local (see reference/SOURCES.md, tools/ref/fetch.sh)
+reference/video/
+reference/commons/
+reference/*.jpg
+tools/ref/masks/
+__pycache__/

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lava Lamps</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #020203; --fg: rgba(255,240,230,0.72); --muted: rgba(255,240,230,0.42); }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; font-family: Inter, system-ui, sans-serif; }
+  canvas { display: block; touch-action: none; }
+  #hud { position: fixed; left: 16px; bottom: 14px; color: var(--fg); font-size: 12px; letter-spacing: 0.02em; pointer-events: none; text-shadow: 0 1px 3px #000; font-variant-numeric: tabular-nums; }
+  #hint { position: fixed; left: 16px; top: 14px; color: var(--muted); font-size: 12px; pointer-events: none; text-shadow: 0 1px 3px #000; }
+  #hint b { color: var(--fg); font-weight: 500; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); color: var(--fg); font-size: 13px; transition: opacity 1.2s ease; z-index: 10; }
+  #loading.hide { opacity: 0; pointer-events: none; }
+  .lil-gui { --font-family: Inter, system-ui, sans-serif; --background-color: rgba(14,12,12,0.82); --title-background-color: rgba(30,24,24,0.9); }
+  @media (max-width: 600px) { #hint { display: none; } }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="loading"><span>Warming up the wax…</span></div>
+<div id="hint"><b>Lava Lamps</b> · drag to orbit · scroll to zoom · right-drag to pan · click a lamp to select it · double-click to nudge</div>
+<div id="hud"></div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
