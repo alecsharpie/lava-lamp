@@ -2,7 +2,7 @@
 
 Physically simulated, raymarched lava lamps in the browser (Three.js, no build step).
 
-**Live:** https://alecsharpie.github.io/lava-lamp/
+**Live:** https://www.alecsharpie.me/lava-lamp/
 
 ```bash
 cd lava-lamp
