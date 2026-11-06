@@ -18,8 +18,10 @@ export class FieldBuilder {
     this.dens = new Float32Array(n);
     this.temp = new Float32Array(n);
     this.od = new Float32Array(this.nx * this.nz);
-    this.tmp = new Float32Array(n);
     this.lightTop = 1;
+    // lookup table for exp(-depth/2) * 255 (byte-encoded square root of the transmittance)
+    this.lutScale = 128; this.lut = new Uint8Array(16 * 128 + 1);
+    for (let i = 0; i < this.lut.length; i++) this.lut[i] = (Math.exp(-i / this.lutScale / 2) * 255 + 0.5) | 0;
   }
 
   // positions in metres (globe-local) via sim units * h
@@ -51,39 +53,32 @@ export class FieldBuilder {
       }
     }
 
-    // bulb light: sweep upward through each column accumulating wax optical depth
+    // bulb light: sweep upward through each column accumulating wax optical depth, packing each
+    // voxel as we go (one pass; 4 bytes written as one 32-bit word)
     const od = this.od, sc = this.scale, iso = 0.25 / sc;
     const kAbs = this.absorb * voxel;
-    const light = this.tmp;
+    const lut = this.lut, lutScale = this.lutScale, lutMax = lut.length - 1;
+    const out32 = new Uint32Array(out.buffer, out.byteOffset, out.length >> 2);
     od.fill(0);
+    let lt = 0, ln = 0;
     for (let y = 0; y < ny; y++) {
+      const probeRow = y === ny - 4;
       for (let z = 0; z < nz; z++) {
         let o = z * sxy + y * sx, c = z * nx;
         for (let x = 0; x < nx; x++, o++, c++) {
           const d = dens[o];
           const occ = d <= iso * 0.5 ? 0 : d >= iso * 1.6 ? 1 : (d - iso * 0.5) / (iso * 1.1);
-          od[c] += occ * kAbs;
-          light[o] = od[c];
+          const depth = od[c] += occ * kAbs;
+          // G = sqrt(exp(-depth)) = exp(-depth/2): more precision in the shadows
+          const li = depth * lutScale, g = li >= lutMax ? 0 : lut[li | 0];
+          const r = d * sc >= 1 ? 255 : (d * sc * 255) | 0;
+          const t = d > 1e-4 ? Math.min(255, (temp[o] / d) * 255) | 0 : 0;
+          out32[o] = r | (g << 8) | (t << 16) | 0xff000000;
+          if (probeRow) { lt += Math.exp(-depth); ln++; }
         }
       }
       // light leaks sideways a little (the bulb is a broad source): blur this slice's depth
       if ((y & 1) === 0) this.blurSlice(od);
-    }
-
-    // pack
-    let lt = 0, ln = 0;
-    for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) {
-      let o = z * sxy + y * sx;
-      for (let x = 0; x < nx; x++, o++) {
-        const d = dens[o];
-        const j = o * 4;
-        out[j] = Math.min(255, d * sc * 255) | 0;
-        const L = Math.exp(-light[o]);
-        out[j + 1] = (Math.sqrt(L) * 255 + 0.5) | 0; // sqrt: more precision in the shadows
-        out[j + 2] = d > 1e-4 ? Math.min(255, (temp[o] / d) * 255) | 0 : 0;
-        out[j + 3] = 255;
-        if (y === ny - 4) { lt += L; ln++; }
-      }
     }
     this.lightTop = lt / ln;
     return out;

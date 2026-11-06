@@ -15,7 +15,7 @@ python3 -m http.server 8766
 - Click a lamp to select it; double-click a lamp to nudge it.
 
 The **Scene** panel sets:
-- number of lamps (1–5) and time speed;
+- number of lamps (1–5; one by default) and time speed;
 - room light (dark to evenly lit), exposure, glow and vignette;
 - thermal camera view and slow orbit;
 - quality (`Auto` scales resolution to hold the display's frame rate).
@@ -64,12 +64,18 @@ the globe. Studio softboxes appear only in reflections. Post-processing does blo
 vignette, slight chromatic aberration and grain in one pass.
 
 **Performance:**
-- Physics and volume building run in workers: under 1 ms per step plus about 5 ms per volume, per
-  lamp.
-- The 3D texture is uploaded only when the simulation has actually stepped.
-- No shadow maps.
-- In `Auto` quality the resolution drops when frames run long and climbs back when there's
-  headroom.
+- **Frames are drawn on demand.** The wax only changes when the simulation steps (30 times a
+  second), so with a still camera the page draws 30 frames a second rather than the display's
+  60–120. It draws every display frame while you orbit, a lamp shakes or a bulb fades.
+- **`Auto` quality caps the resolution scale at 1.5× on retina screens**, and drops it further
+  if frames run long.
+- **Cheaper passes.** The room seen through the glass is drawn at half resolution, the metal's
+  reflection probes refresh slowly, and there are no shadow maps.
+- **Background threads.** Physics and the volume build run in one worker per lamp, at about
+  1 ms per step plus 3–5 ms per volume.
+- **Measuring.** `node tools/bench.mjs scenarios.json` measures frame cost on the real GPU
+  (headless Chrome with the page's `?prof=1` profiler). `?always=1` draws every frame for
+  comparison, and `LL.debug` switches off probes or the background pass.
 
 ## Realism harness (`tools/`)
 

@@ -36,15 +36,18 @@ const LINEUP = [
   ['Green in Yellow', 'Silver'], ['Pink in Clear', 'Copper'],
 ];
 const QUALITY = {
-  Auto:   { pr: 2, steps: 150, auto: true },
+  Auto:   { pr: 1.5, steps: 150, auto: true }, // 1.5x on retina: grain and bloom hide the difference
   Low:    { pr: 1, steps: 90 },
   Medium: { pr: 1.5, steps: 140 },
   High:   { pr: 2, steps: 200 },
 };
 
 const Q = new URLSearchParams(location.search);
+let needsRender = true; // frames are drawn on demand (see the loop at the bottom)
+const ALWAYS = !!Q.get('always');
+const DEBUG = { noProbes: false, noBg: false }; // benchmark switches (LL.debug) // benchmark switch: draw every display frame (the old behaviour)
 const view = {
-  lamps: Math.max(1, Math.min(MAX_LAMPS, +(Q.get('lamps') ?? 3) || 3)),
+  lamps: Math.max(1, Math.min(MAX_LAMPS, +(Q.get('lamps') ?? 1) || 1)),
   speed: 1.0, roomLight: 0.4, exposure: 1.0, bloom: 0.55, vignette: 0.55, thermal: false,
   quality: 'Auto', autoRotate: false,
 };
@@ -58,7 +61,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color();
 
 const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.01, 30);
-camera.position.set(0.12, 0.27, 0.8);
+camera.position.set(0.11, 0.27, 0.74);
 camera.layers.enable(LAYER_GLOBE);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0.205, 0);
@@ -75,15 +78,18 @@ if (Q.get('cam') === 'wide') { camera.position.set(0.25, 0.42, 1.25); controls.t
 
 // ------------------------------------------------------------------ room: a plain, evenly lit studio
 const room = new THREE.Group(); scene.add(room);
-const floorMat = new THREE.MeshStandardMaterial({ color: 0x4a443f, roughness: 0.82, metalness: 0 });
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), floorMat);
-floor.rotation.x = -Math.PI / 2; room.add(floor);
-// seamless backdrop: floor curving up into a wall
-const cove = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 8, 32, 1, true, Math.PI, Math.PI / 2),
-  new THREE.MeshStandardMaterial({ color: 0x4a443f, roughness: 0.9, side: THREE.BackSide }));
-cove.rotation.z = Math.PI / 2; cove.position.set(0, 0.5, -0.45); room.add(cove);
-const wall = new THREE.Mesh(new THREE.PlaneGeometry(8, 4), new THREE.MeshStandardMaterial({ color: 0x4a443f, roughness: 0.9 }));
-wall.position.set(0, 2.5, -0.95); room.add(wall);
+// seamless studio all the way round: the floor curves up into a circular wall (a lathe), so there
+// are no edges to find from any orbit angle
+const studioPts = [new THREE.Vector2(0, 0)];
+{
+  const R = 3.5, c = 0.8, H = 4;
+  studioPts.push(new THREE.Vector2(R - c, 0));
+  for (let i = 1; i <= 12; i++) { const a = (i / 12) * Math.PI / 2; studioPts.push(new THREE.Vector2(R - c + c * Math.sin(a), c - c * Math.cos(a))); }
+  studioPts.push(new THREE.Vector2(R, H));
+}
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x4a443f, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
+const studio = new THREE.Mesh(new THREE.LatheGeometry(studioPts, 96), floorMat);
+room.add(studio);
 const hemi = new THREE.HemisphereLight(0xfff3e8, 0x3a332e, 1); room.add(hemi);
 const key = new THREE.DirectionalLight(0xfff0e4, 1); key.position.set(-1.2, 2.5, 2.0); room.add(key);
 // studio softboxes: only visible in reflections, they give the metal and glass real highlights
@@ -302,7 +308,9 @@ class Lamp {
     if (which !== 'cap') { this.base.visible = false; this.probeBase.cam.update(renderer, scene); this.base.visible = true; this.probeBase.rt.texture.needsPMREMUpdate = true; }
     if (which !== 'base') { this.cap.visible = false; this.probeCap.cam.update(renderer, scene); this.cap.visible = true; this.probeCap.rt.texture.needsPMREMUpdate = true; }
   }
+ // returns true when something visible changed (new wax, shaking, bulb fading)
   tick(dt, t) {
+    let active = Math.abs(this.bulbTarget - this.bulb) > 0.002;
     this.bulb += (this.bulbTarget - this.bulb) * (1 - Math.exp(-dt * (this.bulbTarget > this.bulb ? 5 : 3)));
     const flicker = 1 + 0.012 * Math.sin(t * 7.3 + this.slot) * Math.sin(t * 3.1 + this.slot * 2);
     const lt = this.stats ? this.stats.lightTop : 1;
@@ -310,6 +318,7 @@ class Lamp {
     this.light.intensity = this.bulb * (0.12 + 0.22 * lt) * flicker;
     this.proxyMat.color.copy(this.glow).multiplyScalar(this.bulb * 0.25 + 0.01);
     const sh = this.shake;
+    if (Math.abs(sh.x) + Math.abs(sh.z) + Math.abs(sh.vx) + Math.abs(sh.vz) > 1e-4) active = true;
     sh.vx += (-sh.x * 900 - sh.vx * 14) * dt; sh.vz += (-sh.z * 900 - sh.vz * 14) * dt;
     sh.x += sh.vx * dt; sh.z += sh.vz * dt;
     this.group.position.set(this.x + sh.x * 0.02, 0, sh.z * 0.02);
@@ -318,7 +327,9 @@ class Lamp {
     if (this.pending && this.tex) {
       this.tex.image.data = this.pending; this.tex.needsUpdate = true;
       this.returnBuf = this.pending; this.pending = null;
+      active = true;
     }
+    return active;
   }
   dispose() {
     this.worker.terminate();
@@ -352,6 +363,25 @@ composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), view.bloom, 0.75, 0.82);
 composer.addPass(bloom);
 composer.addPass(grade);
+
+// Frame profiler (?prof=1): reads back one pixel of the final image at the end of every frame, which
+// waits for all of the frame's GPU work, and times the whole frame (CPU + GPU) on the wall clock.
+// Mean over 60 frames in LL.prof.ms. Breakdowns come from toggling features and comparing.
+const prof = (() => {
+  const gl = renderer.getContext(), px = new Uint8Array(4);
+  if (!Q.get('prof')) return { start() {}, stop() {}, ms: 0, samples: [] };
+  let t0 = 0, sum = 0, n = 0;
+  return {
+    ms: 0, samples: [], // per-frame times (last 600 rendered frames)
+    start() { t0 = performance.now(); },
+    stop() {
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); // default framebuffer, after the grade pass
+      const d = performance.now() - t0; sum += d;
+      this.samples.push(d); if (this.samples.length > 600) this.samples.shift();
+      if (++n === 60) { this.ms = +(sum / n).toFixed(2); sum = 0; n = 0; }
+    },
+  };
+})();
 grade.uniforms.uVignette.value = view.vignette;
 
 // dynamic resolution: keep the frame rate at the display's refresh rate
@@ -365,7 +395,9 @@ function resize() {
   composer.setPixelRatio(pr);
   composer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-  bgRT.setSize(Math.floor(innerWidth * pr), Math.floor(innerHeight * pr));
+  // the room seen through the globe is blurred by the liquid anyway: half resolution is plenty
+  bgRT.setSize(Math.max(1, Math.floor(innerWidth * pr / 2)), Math.max(1, Math.floor(innerHeight * pr / 2)));
+  needsRender = true;
   shared.uSteps.value = qual.steps;
 }
 addEventListener('resize', resize);
@@ -412,6 +444,7 @@ renderer.domElement.addEventListener('dblclick', (e) => {
 // ------------------------------------------------------------------ GUI
 const gui = new GUI({ title: 'Lava Lamps' });
 const fScene = gui.addFolder('Scene');
+fScene.close();
 fScene.add(view, 'lamps', 1, MAX_LAMPS, 1).name('Lamps').onFinishChange(setLampCount);
 fScene.add(view, 'speed', 0.25, 12, 0.05).name('Time speed').onChange(v => lamps.forEach(l => l.worker.postMessage({ type: 'speed', value: v })));
 fScene.add(view, 'roomLight', 0, 1, 0.01).name('Room light').onChange(applyRoomLight);
@@ -466,28 +499,40 @@ function updateHud() {
 }
 
 // ------------------------------------------------------------------ loop
+// Frames are drawn on demand: the wax only changes when the simulation steps (30 Hz), so with a still
+// camera the page renders at 30 fps instead of the display's 60-120, and idles when nothing changes.
 const clock = new THREE.Clock();
-let frame = 0, hudT = 0, probeCursor = 0;
+let frame = 0, hudT = 0, probeCursor = 0, renderedLast = false, sinceRender = 0;
+gui.onChange(() => { needsRender = true; });
 function tick() {
   requestAnimationFrame(tick);
   const rawDt = clock.getDelta();
   const dt = Math.min(rawDt, 0.05);
   const t = clock.elapsedTime;
-  adaptResolution(rawDt * 1000, performance.now());
-  controls.update();
-  for (const l of lamps) l.tick(dt, t);
+  if (renderedLast) adaptResolution(rawDt * 1000, performance.now()); // only frame-to-frame render costs
+  if (controls.update()) needsRender = true;
+  for (const l of lamps) if (l.tick(dt, t)) needsRender = true;
+  sinceRender += rawDt;
+  if (!(needsRender || ALWAYS || envDirty || sinceRender > 0.25 || lamps.some(l => l.probesDirty > 0))) {
+    renderedLast = false;
+    for (const l of lamps) l.request();
+    if ((hudT += dt) > 0.5) { hudT = 0; updateHud(); }
+    return;
+  }
+  needsRender = false; renderedLast = true; sinceRender = 0;
 
   // reflections: the shared room probe only when something changed, the metal probes round-robin
-  if (envDirty) {
+  prof.start();
+  if (envDirty && !DEBUG.noProbes) {
     for (const l of lamps) { l.base.visible = l.cap.visible = false; }
     envCam.update(renderer, scene);
     for (const l of lamps) { l.base.visible = l.cap.visible = true; }
     envDirty = false;
   }
-  for (const l of lamps) if (l.probesDirty > 0) { l.updateProbes('all'); l.probesDirty--; }
-  if (frame % 3 === 0 && lamps.length) {
+  if (!DEBUG.noProbes) for (const l of lamps) if (l.probesDirty > 0) { l.updateProbes('all'); l.probesDirty--; }
+  if (frame % 8 === 0 && lamps.length) { // the glow changes slowly: refresh one probe every 8th frame
     const k = probeCursor++ % (lamps.length * 2);
-    lamps[k >> 1].updateProbes(k & 1 ? 'cap' : 'base');
+    if (!DEBUG.noProbes) lamps[k >> 1].updateProbes(k & 1 ? 'cap' : 'base');
   }
 
   camera.updateMatrixWorld();
@@ -497,11 +542,13 @@ function tick() {
 
   // background pass (everything but the globes) for refraction
   camera.layers.disable(LAYER_GLOBE);
-  renderer.setRenderTarget(bgRT); renderer.render(scene, camera); renderer.setRenderTarget(null);
+  if (!DEBUG.noBg) { renderer.setRenderTarget(bgRT); renderer.render(scene, camera); renderer.setRenderTarget(null); }
   camera.layers.enable(LAYER_GLOBE);
 
   grade.uniforms.uTime.value = t;
   composer.render();
+  prof.stop();
+  // only now hand the buffers back to the workers: the texture upload happens during render()
   for (const l of lamps) l.request();
 
   if (loading && !loading.classList.contains('hide') && lamps.every(l => l.stats)) loading.classList.add('hide');
@@ -512,7 +559,7 @@ function tick() {
 window.LL = {
   THREE, lamps, view, shared, applyRoomLight, camera, controls, renderer, bloom, grade, scene, setLampCount, select, perf,
   get stats() { return lamps.length && lamps.every(l => l.stats) ? lamps[0].stats : null; },
-  get pr() { return curPR; },
+  get pr() { return curPR; }, get rendered() { return frame; }, resize, prof, debug: DEBUG,
 };
 
 // start: load the pre-warmed snapshots, then build the lineup
