@@ -1,4 +1,4 @@
-# Lava Lamps
+# Lava Lamp
 
 Physically simulated, raymarched lava lamps in the browser (Three.js, no build step).
 

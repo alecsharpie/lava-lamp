@@ -442,7 +442,7 @@ renderer.domElement.addEventListener('dblclick', (e) => {
 });
 
 // ------------------------------------------------------------------ GUI
-const gui = new GUI({ title: 'Lava Lamps' });
+const gui = new GUI({ title: 'Lava Lamp' });
 const fScene = gui.addFolder('Scene');
 fScene.close();
 fScene.add(view, 'lamps', 1, MAX_LAMPS, 1).name('Lamps').onFinishChange(setLampCount);
